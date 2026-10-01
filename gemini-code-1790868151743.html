@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mis Finanzas Personales</title>
+    <!-- Usamos TailwindCSS para darle un diseño bonito sin escribir mucho CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+        .card-container { display: none; }
+        .card-container.active { display: block; }
+    </style>
+</head>
+<body class="p-6">
+
+    <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-6">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">💰 Mi Gestor Financiero</h1>
+
+        <!-- SECCIÓN: RESUMEN Y GASTOS FIJOS -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-blue-50 p-4 rounded-lg">
+                <h2 class="font-bold text-lg text-blue-800 mb-4">Ingresos y Gastos Fijos</h2>
+                <div class="space-y-2">
+                    <label class="block text-sm">Ingreso Mensual:</label>
+                    <input type="number" id="ingreso" class="w-full p-2 border rounded" onchange="guardarFijos()">
+                    
+                    <label class="block text-sm">Renta:</label>
+                    <input type="number" id="renta" class="w-full p-2 border rounded" onchange="guardarFijos()">
+                    
+                    <label class="block text-sm">Luz (Bimestral - se dividirá entre 2):</label>
+                    <input type="number" id="luz" class="w-full p-2 border rounded" onchange="guardarFijos()">
+                    
+                    <label class="block text-sm">Ahorro Destinado:</label>
+                    <input type="number" id="ahorro" class="w-full p-2 border rounded" onchange="guardarFijos()">
+
+                    <label class="block text-sm text-red-600 font-bold">Límite de Gastos Libres (Alarma):</label>
+                    <input type="number" id="limite" class="w-full p-2 border border-red-300 rounded bg-red-50" onchange="guardarFijos()">
+                </div>
+            </div>
+
+            <div class="bg-green-50 p-4 rounded-lg">
+                <h2 class="font-bold text-lg text-green-800 mb-4">Resumen Mensual</h2>
+                <p>Ingresos: <span id="res-ingreso" class="font-bold">$0</span></p>
+                <p class="text-red-600">Gastos Fijos (Renta, 1/2 Luz, Ahorro): <span id="res-fijos" class="font-bold">$0</span></p>
+                <p class="text-red-600">Pago a Tarjetas este mes: <span id="res-tarjetas" class="font-bold">$0</span></p>
+                <p class="text-orange-600">Gastos Hormiga / Libres: <span id="res-libres" class="font-bold">$0</span></p>
+                <hr class="my-2 border-green-300">
+                <p class="text-xl">Dinero Libre Restante: <span id="res-total" class="font-bold text-green-700">$0</span></p>
+            </div>
+        </div>
+
+        <!-- SECCIÓN: TARJETAS DE CRÉDITO -->
+        <div class="mb-4 flex justify-between items-center">
+            <h2 class="text-2xl font-bold text-gray-800">Mis Tarjetas</h2>
+            <button onclick="agregarTarjeta()" class="bg-indigo-600 text-white px-4 py-2 rounded shadow hover:bg-indigo-700">+ Nueva Tarjeta</button>
+        </div>
+
+        <div id="lista-tarjetas" class="space-y-4">
+            <!-- Las tarjetas se generan aquí con JavaScript -->
+        </div>
+
+    </div>
+
+    <!-- SCRIPT PRINCIPAL -->
+    <script>
+        // ESTADO GLOBAL DE LA APLICACIÓN
+        let state = JSON.parse(localStorage.getItem('misFinanzas')) || {
+            ingreso: 0, renta: 0, luz: 0, ahorro: 0, limite: 3000,
+            ultimoMes: new Date().getMonth(),
+            tarjetas: []
+        };
+
+        // INICIALIZACIÓN
+        window.onload = () => {
+            verificarCambioDeMes();
+            cargarInputs();
+            renderizarTarjetas();
+            calcularResumen();
+        };
+
+        // 1. LÓGICA DE CAMBIO DE MES
+        function verificarCambioDeMes() {
+            let mesActual = new Date().getMonth();
+            if (state.ultimoMes !== mesActual) {
+                // Pasó un mes! Actualizamos datos
+                state.tarjetas.forEach(tarjeta => {
+                    tarjeta.pagado = false; // Se reinicia el checkbox
+                    tarjeta.gastosUnPago = []; // Se borran los gastos del mes pasado
+                    
+                    // Restar meses a las deudas a MSI
+                    tarjeta.deudas.forEach(deuda => {
+                        if (deuda.mesesRestantes > 0) deuda.mesesRestantes--;
+                    });
+                    
+                    // Eliminar deudas que ya se pagaron (0 meses)
+                    tarjeta.deudas = tarjeta.deudas.filter(d => d.mesesRestantes > 0);
+                });
+                state.ultimoMes = mesActual;
+                guardarDatos();
+                alert("¡Inició un nuevo mes! Se restaron los meses de tus deudas, se limpiaron los gastos hormiga y se reiniciaron los pagos de tarjeta.");
+            }
+        }
+
+        function guardarDatos() {
+            localStorage.setItem('misFinanzas', JSON.stringify(state));
+            calcularResumen();
+        }
+
+        // 2. LÓGICA DE FIJOS
+        function guardarFijos() {
+            state.ingreso = parseFloat(document.getElementById('ingreso').value) || 0;
+            state.renta = parseFloat(document.getElementById('renta').value) || 0;
+            state.luz = parseFloat(document.getElementById('luz').value) || 0;
+            state.ahorro = parseFloat(document.getElementById('ahorro').value) || 0;
+            state.limite = parseFloat(document.getElementById('limite').value) || 0;
+            guardarDatos();
+        }
+
+        function cargarInputs() {
+            document.getElementById('ingreso').value = state.ingreso || '';
+            document.getElementById('renta').value = state.renta || '';
+            document.getElementById('luz').value = state.luz || '';
+            document.getElementById('ahorro').value = state.ahorro || '';
+            document.getElementById('limite').value = state.limite || '';
+        }
+
+        // 3. LÓGICA DE TARJETAS
+        function agregarTarjeta() {
+            const nombre = prompt("Nombre de la tarjeta (Ej: Nu, BBVA):");
+            if (nombre) {
+                state.tarjetas.push({ id: Date.now(), nombre: nombre, deudas: [], gastosUnPago: [], pagado: false });
+                guardarDatos();
+                renderizarTarjetas();
+            }
+        }
+
+        function toggleTarjeta(id) {
+            const div = document.getElementById(`detalles-${id}`);
+            div.classList.toggle('active');
+        }
+
+        function togglePago(id) {
+            const tarjeta = state.tarjetas.find(t => t.id === id);
+            tarjeta.pagado = !tarjeta.pagado;
+            guardarDatos();
+        }
+
+        function borrarTarjeta(id) {
+            if(confirm("¿Seguro que quieres borrar esta tarjeta y todas sus deudas?")) {
+                state.tarjetas = state.tarjetas.filter(t => t.id !== id);
+                guardarDatos();
+                renderizarTarjetas();
+            }
+        }
+
+        // AGREGAR DEUDAS Y GASTOS A LA TARJETA
+        function agregarDeudaMeses(id) {
+            const desc = prompt("¿Qué compraste?");
+            if(!desc) return;
+            const total = parseFloat(prompt("Costo Total:"));
+            const meses = parseInt(prompt("¿A cuántos meses? (Ej: 12)"));
+            
+            if(total && meses) {
+                const tarjeta = state.tarjetas.find(t => t.id === id);
+                tarjeta.deudas.push({
+                    id: Date.now(),
+                    descripcion: desc,
+                    total: total,
+                    mesesTotales: meses,
+                    mesesRestantes: meses,
+                    pagoMensual: total / meses
+                });
+                guardarDatos();
+                renderizarTarjetas();
+            }
+        }
+
+        function agregarGastoUnPago(id) {
+            const desc = prompt("Descripción del gasto hormiga/único:");
+            if(!desc) return;
+            const monto = parseFloat(prompt("Monto:"));
+            
+            if(monto) {
+                const tarjeta = state.tarjetas.find(t => t.id === id);
+                tarjeta.gastosUnPago.push({ id: Date.now(), descripcion: desc, monto: monto });
+                guardarDatos();
+                renderizarTarjetas();
+            }
+        }
+
+        // RENDERIZAR TARJETAS EN PANTALLA
+        function renderizarTarjetas() {
+            const container = document.getElementById('lista-tarjetas');
+            container.innerHTML = '';
+
+            state.tarjetas.forEach(tarjeta => {
+                let pagoMensualDeudas = tarjeta.deudas.reduce((acc, d) => acc + d.pagoMensual, 0);
+                let totalUnPago = tarjeta.gastosUnPago.reduce((acc, g) => acc + g.monto, 0);
+                let aPagarEsteMes = pagoMensualDeudas + totalUnPago;
+
+                let htmlDeudas = tarjeta.deudas.map(d => 
+                    `<li class="text-sm flex justify-between border-b py-1">
+                        <span>💳 ${d.descripcion} (${d.mesesRestantes}/${d.mesesTotales} meses)</span>
+                        <span class="font-bold text-red-500">$${d.pagoMensual.toFixed(2)}/mes</span>
+                    </li>`).join('');
+
+                let htmlGastos = tarjeta.gastosUnPago.map(g => 
+                    `<li class="text-sm flex justify-between border-b py-1 text-orange-700">
+                        <span>☕ ${g.descripcion}</span>
+                        <span class="font-bold">$${g.monto.toFixed(2)}</span>
+                    </li>`).join('');
+
+                const div = document.createElement('div');
+                div.className = "bg-white border rounded-lg shadow-sm";
+                div.innerHTML = `
+                    <div class="p-4 bg-gray-50 flex justify-between items-center cursor-pointer rounded-t-lg border-b" onclick="toggleTarjeta(${tarjeta.id})">
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" ${tarjeta.pagado ? 'checked' : ''} onclick="event.stopPropagation(); togglePago(${tarjeta.id})" class="w-5 h-5 cursor-pointer accent-green-600">
+                            <h3 class="font-bold text-lg ${tarjeta.pagado ? 'text-green-600 line-through' : 'text-gray-800'}">${tarjeta.nombre}</h3>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-sm text-gray-500">A pagar este mes:</span>
+                            <p class="font-bold text-xl text-red-600">$${aPagarEsteMes.toFixed(2)}</p>
+                        </div>
+                    </div>
+                    
+                    <div id="detalles-${tarjeta.id}" class="card-container p-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Deudas a Meses -->
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <h4 class="font-bold text-gray-700">Deudas a Meses</h4>
+                                    <button onclick="agregarDeudaMeses(${tarjeta.id})" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">+ Agregar</button>
+                                </div>
+                                <ul>${htmlDeudas || '<p class="text-xs text-gray-400">No hay deudas a meses</p>'}</ul>
+                            </div>
+                            <!-- Gastos un pago -->
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <h4 class="font-bold text-gray-700">Gastos Hormiga (1 pago)</h4>
+                                    <button onclick="agregarGastoUnPago(${tarjeta.id})" class="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded">+ Agregar</button>
+                                </div>
+                                <ul>${htmlGastos || '<p class="text-xs text-gray-400">No hay gastos hormiga</p>'}</ul>
+                            </div>
+                        </div>
+                        <div class="mt-4 text-right">
+                            <button onclick="borrarTarjeta(${tarjeta.id})" class="text-sm text-red-500 hover:underline">Eliminar Tarjeta</button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // 4. CALCULAR RESUMEN Y ALARMA
+        function calcularResumen() {
+            let luzMensual = state.luz / 2; // La luz es bimestral
+            let gastosFijos = state.renta + luzMensual + state.ahorro;
+            
+            let totalTarjetas = 0;
+            let totalGastosLibres = 0;
+
+            state.tarjetas.forEach(t => {
+                let pagoDeudas = t.deudas.reduce((acc, d) => acc + d.pagoMensual, 0);
+                let pagoUnico = t.gastosUnPago.reduce((acc, g) => acc + g.monto, 0);
+                totalTarjetas += (pagoDeudas + pagoUnico);
+                totalGastosLibres += pagoUnico; // Sumamos los gastos hormiga al limite libre
+            });
+
+            let dineroLibre = state.ingreso - gastosFijos - totalTarjetas;
+
+            document.getElementById('res-ingreso').innerText = `$${state.ingreso.toFixed(2)}`;
+            document.getElementById('res-fijos').innerText = `$${gastosFijos.toFixed(2)}`;
+            document.getElementById('res-tarjetas').innerText = `$${totalTarjetas.toFixed(2)}`;
+            document.getElementById('res-libres').innerText = `$${totalGastosLibres.toFixed(2)}`;
+            document.getElementById('res-total').innerText = `$${dineroLibre.toFixed(2)}`;
+
+            // ALARMA DE LÍMITE DE GASTOS LIBRES
+            if (state.limite > 0) {
+                if (totalGastosLibres >= state.limite) {
+                    alert("¡🚨 ALARMA! Has superado tu límite mensual de gastos libres (hormiga).");
+                } else if (totalGastosLibres >= (state.limite * 0.8)) {
+                    alert("¡⚠️ CUIDADO! Estás al 80% o más de tu límite de gastos libres. Frena un poco.");
+                }
+            }
+        }
+    </script>
+</body>
+</html>
